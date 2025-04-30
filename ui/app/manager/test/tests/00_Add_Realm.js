@@ -1,8 +1,9 @@
 import { expect } from "@playwright/test";
 import { test } from "../fixtures/test";
 
-test.beforeEach(async ({ openRealm }) => {
+test.beforeEach(async ({ openRealm, login }) => {
   await openRealm("master");
+  login("admin");
 });
 
 test("Add Realm", async ({ page, addRealm }) => {
@@ -11,8 +12,8 @@ test("Add Realm", async ({ page, addRealm }) => {
   // Then Add a new Realm
   await addRealm("smartcity", true);
   // When Select smartcity realm
-  await this.click("#realm-picker");
-  await this.click('li[role="menuitem"]:has-text("smartcity")');
+  await page.click("#realm-picker");
+  await page.click('li[role="menuitem"]:has-text("smartcity")');
   // Then We see the smartcity realm
   expect(page.locator('div[id="realm-picker"]')).toContainText("smartcity");
 });

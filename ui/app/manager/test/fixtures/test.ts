@@ -1,6 +1,6 @@
 import { test as base, expect, Response, type Page } from "@playwright/test";
 import { getAppUrl } from "../utils";
-import { assets } from "./data/assets";
+import { assets, passwords } from "./data/assets";
 
 interface Fixtures {
   /**
@@ -8,6 +8,7 @@ interface Fixtures {
    * @param realm The realm to open
    */
   openRealm: (realm: string) => Promise<null | Response>;
+  goToRealmStartPage: (realm: string) => Promise<void>;
   /**
    * Login as user
    * @param user Username (admin or other)
@@ -131,44 +132,54 @@ export const test = base.extend<Fixtures>({
     // TODO: handle this per app ?
     await use((realm) => page.goto(getAppUrl(baseURL!, realm)));
   },
-  async login({}, use) {
+  async goToRealmStartPage({ baseURL, page }, use) {
+    await use(async (realm) => {
+      const url = getAppUrl(baseURL!, realm);
+      await page.goto(url);
+      await page.waitForTimeout(1500);
+    });
+  },
+  async login({ page }, use) {
     await use(async (user) => {
-      await this.wait(500);
-      const isLogin = (await this.isVisible('input[name="username"]')) || false;
-      if (isLogin) {
-        let password = global.passwords[user];
-        await this.page?.fill('input[name="username"]', user);
-        await this.page?.fill('input[name="password"]', password);
-        await this.page?.keyboard.press("Enter");
+      await page.waitForTimeout(500);
+      // const isLogin = (await page.isVisible('input[id="username"]')) || false;
+      const username = page.getByRole("textbox", { name: "Username or email" });
+      const password = page.getByRole("textbox", { name: "Password" });
+      await username.waitFor()
+      if ((await username.isVisible()) && (await password.isVisible())) {
+        await username.fill(user);
+        console.log(passwords[user as keyof typeof passwords])
+        await password.fill(passwords[user as keyof typeof passwords]);
+        await page.keyboard.press("Enter");
         // console.log(`User: "${user}" logged in,   ` + timeCost(false) + "s");
       }
     });
   },
-  async logout({}, use) {
+  async logout({ page }, use) {
     await use(async (user) => {
-      const isPanelVisibile = await this.isVisible('button:has-text("Cancel")');
+      const isPanelVisibile = await page.isVisible('button:has-text("Cancel")');
       if (isPanelVisibile) {
-        await this.click('button:has-text("Cancel")');
+        await page.click('button:has-text("Cancel")');
       }
-      const isMenuBtnVisible = await this.isVisible("#menu-btn-desktop");
+      const isMenuBtnVisible = await page.isVisible("#menu-btn-desktop");
       if (isMenuBtnVisible) {
-        await this.click("#menu-btn-desktop");
-        await this.click("text=Log out");
+        await page.click("#menu-btn-desktop");
+        await page.click("text=Log out");
       }
     });
   },
   /**
    * Repeatable actions
    */
-  async navigateToMenuItem({}, use) {
+  async navigateToMenuItem({ page }, use) {
     await use(async (setting) => {
       // setStepStartTime();
-      await this.wait(500);
-      await this.click('button[id="menu-btn-desktop"]');
-      await this.wait(500);
-      const isItemVisible = await this.isVisible(`text=${setting}`);
+      await page.waitForTimeout(500);
+      await page.click('button[id="menu-btn-desktop"]');
+      await page.waitForTimeout(500);
+      const isItemVisible = await page.isVisible(`text=${setting}`);
       if (isItemVisible) {
-        await this.click(`text=${setting}`);
+        await page.click(`text=${setting}`);
       } else {
         console.log("not rendered yet");
       }
@@ -178,22 +189,22 @@ export const test = base.extend<Fixtures>({
   async navigateToTab({ page }, use) {
     await use(async (tab) => {
       await page.click(`#desktop-left a:has-text("${tab}")`);
-      // await this.wait(1500);
+      // await page.wait(1500);
     });
   },
   async addRealm({ page }, use) {
     await use(async (name, first = false) => {
-      // await this.wait(500);
-      const isVisible = await this.isVisible(`[aria-label="attribute list"] span:has-text("${name}")`);
+      await page.waitForTimeout(500);
+      const isVisible = await page.isVisible(`[aria-label="attribute list"] span:has-text("${name}")`);
       if (!isVisible) {
         await page.click("text=Add Realm");
         await page.fill('#attribute-meta-row-1 >> text=Realm Enabled >> input[type="text"]', name);
 
-        await page?.locator('input[type="text"]').nth(3).fill(name);
+        await page.locator('input[type="text"]').nth(3).fill(name);
         await page.click('button:has-text("create")');
 
-        // await this.wait(first == true ? 15000 : 10000);
-        // const count = await this.count(`[aria-label="attribute list"] span:has-text("${name}")`)
+        // await page.wait(first == true ? 15000 : 10000);
+        // const count = await page.count(`[aria-label="attribute list"] span:has-text("${name}")`)
         // await expect(count).toEqual(1)
         // await console.log("Realm: " + `"${name}"` + " added,   " + timeCost(false) + "s");
       }
@@ -260,84 +271,77 @@ export const test = base.extend<Fixtures>({
       }
     });
   },
-  async addAssets({ page }, use) {
+  async addAssets(
+    { page, switchMode, unselect, updateLocation, setConfigItem, updateInModify, save, updateAssets },
+    use
+  ) {
     await use(async (update, configOrLoction) => {
       // const addAssetTime = new Date() / 1000;
 
-      await this.wait(500);
+      await page.waitForTimeout(500);
 
       // Goes to asset page
-      await this.click("#desktop-left a:nth-child(2)");
+      await page.click("#desktop-left a:nth-child(2)");
 
       // select conosle first to enter into the modify mode
-      await this.click(`#list-container >> text="Consoles"`);
-      await this.switchMode("modify");
-      await this.unselect();
+      await page.click(`#list-container >> text="Consoles"`);
+      await switchMode("modify");
+      await unselect();
 
       // create assets accroding to assets array
       for (let asset of assets) {
         // setStepStartTime();
-        let isAssetVisible = await this.isVisible(`#list-container >> text=${asset.name}`);
+        let isAssetVisible = await page.isVisible(`#list-container >> text=${asset.name}`);
         try {
           if (!isAssetVisible) {
-            await this.click(".mdi-plus");
-            await this.click(`text=${asset.asset}`);
-            await this.fill('#name-input input[type="text"]', asset.name);
-            await this.click("#add-btn");
-            await this.wait(500);
+            await page.click(".mdi-plus");
+            await page.click(`text=${asset.asset}`);
+            await page.fill('#name-input input[type="text"]', asset.name);
+            await page.click("#add-btn");
+            await page.waitForTimeout(500);
             // check if at modify mode
             // if yes we should see the save button then save
-            const isSaveBtnVisible = await this.isVisible('button:has-text("Save")');
+            const isSaveBtnVisible = await page.isVisible('button:has-text("Save")');
             console.log("save btn is " + isSaveBtnVisible);
             if (isSaveBtnVisible) {
               console.log("ready to save");
-              await this.click('button:has-text("Save")');
+              await page.click('button:has-text("Save")');
             }
             console.log(":::::: emtpy asset has been added");
-            await this.switchMode("modify");
-            // await this.unselect()
-            // await this.click(`#list-container >> text=${asset.name}`)
+            await switchMode("modify");
+            // await page.unselect()
+            // await page.click(`#list-container >> text=${asset.name}`)
             if (update) {
               // switch to modify mode if at view mode
 
               // update in modify mode
               if (configOrLoction == "location") {
-                await this.updateLocation(asset.location_x, asset.location_y);
+                await updateLocation(asset.location_x, asset.location_y);
                 console.log(":::::: location updated");
               } else if (configOrLoction == "config") {
-                await this.setConfigItem(
-                  asset.config_item_1,
-                  asset.config_item_2,
-                  asset.config_attr_1,
-                  asset.config_attr_2
-                );
+                await setConfigItem(asset.config_item_1, asset.config_item_2, asset.config_attr_1, asset.config_attr_2);
                 console.log(":::::: config items have been added");
               } else {
-                await this.updateLocation(asset.location_x, asset.location_y);
-                await this.setConfigItem(
-                  asset.config_item_1,
-                  asset.config_item_2,
-                  asset.config_attr_1,
-                  asset.config_attr_2
-                );
+                await updateLocation(asset.location_x, asset.location_y);
+                await setConfigItem(asset.config_item_1, asset.config_item_2, asset.config_attr_1, asset.config_attr_2);
                 console.log(":::::: both settings have been added");
               }
 
-              await this.updateInModify(asset.attr_1, asset.a1_type, asset.v1);
-              await this.updateInModify(asset.attr_2, asset.a2_type, asset.v2);
+              await updateInModify(asset.attr_1, asset.a1_type, asset.v1);
+              await updateInModify(asset.attr_2, asset.a2_type, asset.v2);
 
-              await this.save();
+              await save();
 
               //switch to view mode
-              await this.switchMode("view");
+              await switchMode("view");
               // update value in view mode
-              await this.updateAssets(asset.attr_3, asset.a3_type, asset.v3);
-              await this.wait(500);
+              await updateAssets(asset.attr_3, asset.a3_type, asset.v3);
+              await page.waitForTimeout(500);
 
               //switch to modify mode
-              await this.switchMode("modify");
+              await switchMode("modify");
             }
-            await this.unselect();
+            await unselect();
             // console.log(
             //   "Asset: " +
             //     `"${asset.name}"` +
@@ -357,88 +361,88 @@ export const test = base.extend<Fixtures>({
   },
   async unselect({ page }, use) {
     await use(async () => {
-      await this.wait(500);
-      const isCloseVisible = await this.isVisible(".mdi-close >> nth=0");
+      await page.waitForTimeout(500);
+      const isCloseVisible = await page.isVisible(".mdi-close >> nth=0");
 
       // leave modify mode
       // if (isViewVisible) {
-      //     await this.click('button:has-text("View")')
-      //     let btnDisgard = await this.isVisible('button:has-text("Disgard")')
+      //     await page.click('button:has-text("View")')
+      //     let btnDisgard = await page.isVisible('button:has-text("Disgard")')
       //     if (btnDisgard) {
-      //         await this.click('button:has-text("Disgard")')
+      //         await page.click('button:has-text("Disgard")')
       //         console.log("didn't save successfully")
       //     }
       // }
 
       // unselect the asset
       if (isCloseVisible) {
-        //await this.page?.locator('.mdi-close').first().click()
-        await this.click(".mdi-close >> nth=0");
+        //await page.page?.locator('.mdi-close').first().click()
+        await page.click(".mdi-close >> nth=0");
       }
 
-      await this.wait(500);
+      await page.waitForTimeout(500);
     });
   },
   async updateAssets({ page }, use) {
     await use(async (attr, type, value) => {
-      await this.fill(`#field-${attr} input[type="${type}"]`, value);
-      await this.click(`#field-${attr} #send-btn span`);
+      await page.fill(`#field-${attr} input[type="${type}"]`, value);
+      await page.click(`#field-${attr} #send-btn span`);
     });
   },
   async updateInModify({ page }, use) {
     await use(async (attr, type, value) => {
-      await this.fill(`text=${attr} ${type} >> input[type="number"]`, value);
+      await page.fill(`text=${attr} ${type} >> input[type="number"]`, value);
       console.log("::::::  " + attr + " has been updated");
     });
   },
   async updateLocation({ page }, use) {
     await use(async (location_x, location_y) => {
-      await this.click("text=location GEO JSON point >> button span");
-      await this.page?.mouse.click(location_x, location_y, { delay: 1000 });
-      await this.click('button:has-text("OK")');
+      await page.click("text=location GEO JSON point >> button span");
+      await page.mouse.click(location_x, location_y, { delay: 1000 });
+      await page.click('button:has-text("OK")');
     });
   },
   async configItem({ page }, use) {
     await use(async (item_1, item_2, attr) => {
-      await this.wait(500);
-      await this.click(`td:has-text("${attr} ") >> nth=0`);
-      await this.wait(500);
-      await this.click(".attribute-meta-row.expanded td .meta-item-container div .item-add or-mwc-input #component");
-      await this.click(`li[role="checkbox"]:has-text("${item_1}")`);
-      await this.click(`li[role="checkbox"]:has-text("${item_2}")`);
-      await this.click('div[role="alertdialog"] button:has-text("Add")');
-      await this.wait(500);
+      await page.waitForTimeout(500);
+      await page.click(`td:has-text("${attr} ") >> nth=0`);
+      await page.waitForTimeout(500);
+      await page.click(".attribute-meta-row.expanded td .meta-item-container div .item-add or-mwc-input #component");
+      await page.click(`li[role="checkbox"]:has-text("${item_1}")`);
+      await page.click(`li[role="checkbox"]:has-text("${item_2}")`);
+      await page.click('div[role="alertdialog"] button:has-text("Add")');
+      await page.waitForTimeout(500);
 
       // close attribute menu
-      await this.click(`td:has-text("${attr}") >> nth=0`);
+      await page.click(`td:has-text("${attr}") >> nth=0`);
     });
   },
-  async setConfigItem({ page }, use) {
+  async setConfigItem({ page, configItem }, use) {
     await use(async (item_1, item_2, attr_1, attr_2) => {
-      await this.configItem(item_1, item_2, attr_1);
-      await this.wait(500);
-      await this.configItem(item_1, item_2, attr_2);
-      await this.wait(500);
+      await configItem(item_1, item_2, attr_1);
+      await page.waitForTimeout(500);
+      await configItem(item_1, item_2, attr_2);
+      await page.waitForTimeout(500);
     });
   },
-  async deleteRealm({ page }, use) {
+  async deleteRealm({ page, goToRealmStartPage }, use) {
     await use(async (realm) => {
       // setStepStartTime();
-      await this.wait(500);
-      await this.click(`[aria-label="attribute list"] span:has-text("${realm}")`);
-      await this.click('button:has-text("Delete")');
-      await this.wait(500);
-      await this.fill('div[role="alertdialog"] input[type="text"]', realm);
-      await this.click('button:has-text("OK")');
+      await page.waitForTimeout(500);
+      await page.click(`[aria-label="attribute list"] span:has-text("${realm}")`);
+      await page.click('button:has-text("Delete")');
+      await page.waitForTimeout(500);
+      await page.fill('div[role="alertdialog"] input[type="text"]', realm);
+      await page.click('button:has-text("OK")');
       // wait for backend to response
-      await this.wait(5000);
+      await page.waitForTimeout(5000);
       try {
-        const count = await this.count('[aria-label="attribute list"] span:has-text("smartcity")');
+        const count = await page.count('[aria-label="attribute list"] span:has-text("smartcity")');
         await expect(count).toBe(0);
 
-        await this.goToRealmStartPage("master");
-        await this.wait(500);
-        const isVisible = await this.isVisible("#realm-picker");
+        await goToRealmStartPage("master");
+        await page.waitForTimeout(500);
+        const isVisible = await page.isVisible("#realm-picker");
         await expect(isVisible).toBeFalsy();
         // await console.log(`Realm: "${realm}" deleted,    ` + timeCost(false) + "s");
       } catch (e) {
@@ -446,17 +450,17 @@ export const test = base.extend<Fixtures>({
       }
     });
   },
-  async deleteSelectedAsset({ page }, use) {
+  async deleteSelectedAsset({ page, navigateToTab }, use) {
     await use(async (asset) => {
       // setStepStartTime();
-      await this.navigateToTab("Assets");
-      let assetSelected = await this.count(`text=${asset}`);
+      await navigateToTab("Assets");
+      let assetSelected = await page.count(`text=${asset}`);
       if (assetSelected > 0) {
-        await this.click(`text=${asset}`);
-        await this.click(".mdi-delete");
-        await this.click('button:has-text("Delete")');
-        await this.wait(1500);
-        let visibile = await this.count(`text=${asset}`);
+        await page.click(`text=${asset}`);
+        await page.click(".mdi-delete");
+        await page.click('button:has-text("Delete")');
+        await page.waitForTimeout(1500);
+        let visibile = await page.count(`text=${asset}`);
         await expect(visibile).toBeFalsy();
       } else {
         console.log(`Asset: "${asset}" does not exsit`);
@@ -467,58 +471,58 @@ export const test = base.extend<Fixtures>({
   async save({ page }, use) {
     await use(async () => {
       console.log(":::::: in saving");
-      await this.wait(200);
-      await this.click("#edit-container");
-      await this.wait(200); // wait for button to enabled
-      const isSaveBtnVisible = await this.isVisible('button:has-text("Save")');
+      await page.waitForTimeout(200);
+      await page.click("#edit-container");
+      await page.waitForTimeout(200); // wait for button to enabled
+      const isSaveBtnVisible = await page.isVisible('button:has-text("Save")');
       if (isSaveBtnVisible) {
-        await this.click('button:has-text("Save")');
+        await page.click('button:has-text("Save")');
       }
-      await this.wait(200);
-      const isDisabled = await this.page.locator('button:has-text("Save")').isDisabled();
+      await page.waitForTimeout(200);
+      const isDisabled = await page.page.locator('button:has-text("Save")').isDisabled();
       //asset modify
-      const ifModifyMode = await this.isVisible('button:has-text("OK")');
+      const ifModifyMode = await page.isVisible('button:has-text("OK")');
       if (ifModifyMode) {
-        await this.click('button:has-text("OK")');
+        await page.click('button:has-text("OK")');
         console.log("panel closed");
       }
       if (!isDisabled) {
-        await this.click('button:has-text("Save")');
-        await this.wait(200);
+        await page.click('button:has-text("Save")');
+        await page.waitForTimeout(200);
       }
-      await expect(await this.page.locator('button:has-text("Save")')).toBeDisabled();
+      await expect(await page.page.locator('button:has-text("Save")')).toBeDisabled();
     });
   },
-  async setup({ page }, use) {
+  async setup({ page, logout, goToRealmStartPage, login, addAssets }, use) {
     await use(async (realm, level, configOrLocation = "no") => {
       // global.startTime = new Date() / 1000;
 
       if (level !== "lv0") {
-        await this.openApp("master");
-        await this.login("admin");
+        await page.openApp("master");
+        await page.login("admin");
 
-        await this.wait(1500);
-        const isPickerVisible = await this.isVisible("#realm-picker");
+        await page.wait(1500);
+        const isPickerVisible = await page.isVisible("#realm-picker");
         // add realm
         if (!isPickerVisible) {
-          await this.navigateToMenuItem("Realms");
-          await this.addRealm(realm);
+          await navigateToMenuItem("Realms");
+          await addRealm(realm);
         }
-        await this.switchToRealmByRealmPicker(realm);
+        await switchToRealmByRealmPicker(realm);
 
         const update = level == "lv4" ? true : false;
         // add user
         if (level >= "lv2") {
-          await this.addUser("smartcity", global.passwords["smartcity"]);
+          await page.addUser("smartcity", global.passwords["smartcity"]);
           // add assets
           if (level >= "lv3") {
-            await this.logout();
-            await this.goToRealmStartPage(realm);
-            await this.login("smartcity");
-            await this.addAssets(update, configOrLocation);
+            await logout();
+            await goToRealmStartPage(realm);
+            await login("smartcity");
+            await addAssets(update, configOrLocation);
           }
         }
-        await this.logout();
+        await page.logout();
         // console.log(level + " setup takes " + timeCost(true) + "s");
       }
     });
@@ -528,19 +532,19 @@ export const test = base.extend<Fixtures>({
       // const cleanTime = new Date() / 1000;
 
       // ensure login as admin into master
-      await this.wait(500);
-      await this.goToRealmStartPage("master");
-      await this.login("admin");
+      await page.waitForTimeout(500);
+      await goToRealmStartPage("master");
+      await login("admin");
       // must wait for the realm picker to be rendered
-      await this.wait(1500);
-      const isPickerVisible = await this.isVisible("#realm-picker");
+      await page.waitForTimeout(1500);
+      const isPickerVisible = await page.isVisible("#realm-picker");
       if (isPickerVisible) {
         // switch to master realm to ensure being able to delete custom realm
-        await this.switchToRealmByRealmPicker("master");
+        await page.switchToRealmByRealmPicker("master");
         // delete realms
         // should delete everything and set the envrioment to beginning
-        await this.navigateToMenuItem("Realms");
-        await this.deleteRealm("smartcity");
+        await navigateToMenuItem("Realms");
+        await deleteRealm("smartcity");
       }
       // console.log("Clean up takes " + (new Date() / 1000 - cleanTime).toFixed(3) + "s");
     });

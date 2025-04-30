@@ -38,3 +38,8 @@ export const assets = [
     config_attr_2: "powerForecast",
   },
 ];
+
+export const passwords = {
+  admin: "secret",
+  smartcity: "smartcity",
+};
