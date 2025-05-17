@@ -1841,6 +1841,7 @@ export class OrMwcInput extends LitElement {
                     return [opt, i18next.t(optStr, {defaultValue: Util.camelCaseToSentenceCase(optStr)})]
                 }
             });
+            resolved.sort((a, b) => a[1].localeCompare(b[1]));
         }
 
         return resolved;
